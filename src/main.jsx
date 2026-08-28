@@ -18,6 +18,7 @@ const preCollectionUrl = `${preCollectionRoot}/collection.json`
 const postCollectionUrl = `${postCollectionRoot}/collection.json`
 const sentinelSearchUrl = 'https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=85.25,28.15,85.55,28.55&datetime=2026-08-01T00:00:00Z/2026-08-31T23:59:59Z&limit=31&sortby=-properties.datetime'
 const casualtySourceUrl = 'https://nirajbhusal.github.io/rasuwa-flood-bulletin/'
+const vantorCollectionUrl = 'https://vantor-opendata.s3.amazonaws.com/events/Nepal-Flooding-Aug-2026/collection.json'
 const fallbackScenes = [
   { id: '20260527_053226_41_254a', phase: 'PRE-EVENT', date: '27 MAY 2026', time: '05:32:26 UTC', nepaliTime: '11:17:26 NPT', platform: '254a', cloud: 5, thumbnail: preEventImage },
   { id: '20260826_054456_67_251f', phase: 'POST-EVENT', date: '26 AUG 2026', time: '05:44:56 UTC', nepaliTime: '11:29:56 NPT', platform: '251f', cloud: 72, thumbnail: postEventImage },
@@ -238,6 +239,120 @@ function SentinelBrowser() {
   return <section className="sentinel-section section" id="sentinel"><div className="section-top"><div><SectionLabel number="02B">TIMURE / RASUWA BORDER ARCHIVE</SectionLabel><h2>BROWSE<br /><em>SENTINEL-2A</em></h2></div><div className="section-intro"><p>Sentinel-2 scenes are queried for one fixed block around Timure, the Rasuwa border, and a small section of Tibet across August 2026. Pan and zoom only within this event area, then toggle acquisition dates.</p><span className="verified-chip"><i /> TIMURE · RASUWA · TIBET EDGE</span></div></div><div className="sentinel-map-shell"><div ref={mapNode} className="sentinel-map" /><div className="sentinel-date-toggle" role="group" aria-label="Sentinel-2 acquisition dates"><span>DATE</span>{scenes.map((item, index) => <button className={index === selected ? 'active' : ''} key={item.id} onClick={() => setSelected(index)}>{item.date.replace(' AUG 2026', '')}</button>)}</div><div className="sentinel-map-key"><span><i className="map-key-dot active" /> SELECTED SCENE</span><span><i className="map-key-dot" /> OTHER SCENE</span><small>OpenStreetMap basemap · real Sentinel-2 TCI overlay when available</small></div></div><div className="sentinel-browser"><div className="sentinel-preview">{rasterUrl ? <img src={rasterUrl} alt={`Sentinel-2 true color scene ${scene.id}`} /> : scene.thumbnail ? <img src={scene.thumbnail} alt={`Sentinel-2 scene ${scene.id}`} /> : <div className="sentinel-empty"><Satellite size={30} /><strong>LOADING 10 M RASTER</strong><small>Reading the Sentinel-2 COG asset</small></div>}<div className="scene-viewer-overlay"><span>SENTINEL-2 / {scene.date}</span><strong>{scene.id}</strong><small>{scene.cloud}% cloud cover · {scene.time}</small></div></div><div className="sentinel-details"><span className="catalog-label">{status}</span><div className="scene-facts"><div><span>ACQUISITION DATE</span><b>{scene.date}</b></div><div><span>SCENE ID</span><b>{scene.id}</b></div><div><span>PLATFORM</span><b>{scene.platform || 'Sentinel-2'}</b></div><div><span>CLOUD COVER</span><b>{scene.cloud}%</b></div></div>{scene.source && <a className="dataset-link" href={scene.source} target="_blank" rel="noreferrer">OPEN STAC ITEM <ExternalLink size={14} /></a>}<p className="sentinel-note">The map and preview read the scene's real Sentinel-2 Level-2A true-color COG asset. Resolution is 10 m at source; display resampling and cloud cover can affect appearance.</p></div></div><div className="scene-strip">{scenes.map((item, index) => <button className={`scene-thumb ${index === selected ? 'selected' : ''}`} key={item.id} onClick={() => setSelected(index)}>{item.thumbnail ? <img src={item.thumbnail} alt="" /> : <span className="thumb-placeholder"><Satellite size={15} /></span>}<span>{String(index + 1).padStart(2, '0')}</span><small>{item.date} · {item.cloud}%</small></button>)}</div><div className="sentinel-credit">True-color raster from <a href="https://sentinel-cogs.s3.us-west-2.amazonaws.com/" target="_blank" rel="noreferrer">Sentinel COGs on AWS</a> · metadata via <a href="https://earth-search.aws.element84.com/" target="_blank" rel="noreferrer">Earth Search / Element 84</a> · Sentinel-2 data by <a href="https://scihub.copernicus.eu/" target="_blank" rel="noreferrer">Copernicus Sentinel</a></div></section>
 }
 
+function formatVantorDate(datetime) {
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(datetime)).toUpperCase()
+}
+
+// Use the COG's smallest internal overview. This keeps browser reads limited to
+// ranged COG requests rather than downloading multi-hundred-megabyte source files.
+async function renderVantorCog(url, bbox) {
+  const tiff = await fromUrl(url)
+  const image = await tiff.getImage((await tiff.getImageCount()) - 1)
+  const width = Math.min(1400, image.getWidth())
+  const height = Math.max(1, Math.round(image.getHeight() * width / image.getWidth()))
+  const sampleCount = Math.min(3, image.getSamplesPerPixel())
+  const rasters = await image.readRasters({ samples: Array.from({ length: sampleCount }, (_, index) => index), width, height, interleave: false })
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  const pixels = context.createImageData(width, height)
+  for (let index = 0; index < width * height; index += 1) {
+    pixels.data[index * 4] = rasters[0][index]
+    pixels.data[index * 4 + 1] = rasters[Math.min(1, rasters.length - 1)][index]
+    pixels.data[index * 4 + 2] = rasters[Math.min(2, rasters.length - 1)][index]
+    pixels.data[index * 4 + 3] = 255
+  }
+  context.putImageData(pixels, 0, 0)
+  return { url: canvas.toDataURL('image/jpeg', .88), bounds: [[bbox[1], bbox[0]], [bbox[3], bbox[2]]] }
+}
+
+function VantorImagery() {
+  const [scenes, setScenes] = useState([])
+  const [visible, setVisible] = useState([])
+  const [status, setStatus] = useState('LOADING VANTOR STAC COLLECTION')
+  const [loadingIds, setLoadingIds] = useState([])
+  const mapNode = useRef(null)
+  const mapInstance = useRef(null)
+  const rasterLayers = useRef(new Map())
+  const footprintLayers = useRef(new Map())
+
+  useEffect(() => {
+    if (!mapNode.current || mapInstance.current) return undefined
+    const map = L.map(mapNode.current, { zoomControl: false, minZoom: 8 }).setView([28.23, 85.30], 10)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 18 }).addTo(map)
+    L.control.zoom({ position: 'topright' }).addTo(map)
+    mapInstance.current = map
+    setTimeout(() => map.invalidateSize(), 0)
+    return () => { map.remove(); mapInstance.current = null }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadCatalog() {
+      try {
+        const response = await fetch(vantorCollectionUrl)
+        if (!response.ok) throw new Error('Collection request failed')
+        const collection = await response.json()
+        const scenes = await Promise.all((collection.links || []).filter(link => link.rel === 'item').map(async link => {
+          const itemResponse = await fetch(new URL(link.href, vantorCollectionUrl).href)
+          if (!itemResponse.ok) throw new Error('Item request failed')
+          const item = await itemResponse.json()
+          const cog = Object.values(item.assets || {}).find(asset => /cloud-optimized|cog/i.test(`${asset.type || ''} ${asset.title || ''}`))
+          if (!item.id || !item.properties?.datetime || !item.bbox || !cog?.href) return null
+          return { id: item.id, datetime: item.properties.datetime, date: formatVantorDate(item.properties.datetime), time: new Date(item.properties.datetime).toISOString().slice(11, 19) + ' UTC', bbox: item.bbox, geometry: item.geometry, visual: new URL(cog.href, link.href).href, thumbnail: item.assets?.thumbnail?.href ? new URL(item.assets.thumbnail.href, link.href).href : '', cloud: item.properties['eo:cloud_cover'], gsd: item.properties.multispectral_gsd, platform: item.properties.vehicle_name, itemUrl: link.href }
+        }))
+        const validScenes = scenes.filter(Boolean).sort((a, b) => new Date(a.datetime) - new Date(b.datetime))
+        if (!cancelled) { setScenes(validScenes); setStatus(`${validScenes.length} COG SCENES LOADED FROM VANTOR STAC`) }
+      } catch {
+        if (!cancelled) setStatus('VANTOR CATALOG UNAVAILABLE')
+      }
+    }
+    loadCatalog()
+    return () => { cancelled = true }
+  }, [])
+
+  function removeScene(id) {
+    const map = mapInstance.current
+    const raster = rasterLayers.current.get(id)
+    const footprint = footprintLayers.current.get(id)
+    if (raster && map) map.removeLayer(raster)
+    if (footprint && map) map.removeLayer(footprint)
+    rasterLayers.current.delete(id)
+    footprintLayers.current.delete(id)
+  }
+
+  async function toggleScene(scene) {
+    if (visible.includes(scene.id)) {
+      removeScene(scene.id)
+      setVisible(ids => ids.filter(id => id !== scene.id))
+      return
+    }
+    const map = mapInstance.current
+    if (!map) return
+    const bounds = [[scene.bbox[1], scene.bbox[0]], [scene.bbox[3], scene.bbox[2]]]
+    const thumbnailLayer = L.imageOverlay(scene.thumbnail, bounds, { opacity: .78, interactive: false }).addTo(map)
+    const footprint = L.geoJSON(scene.geometry, { style: { color: '#85d3c6', weight: 1.5, fill: false, dashArray: '4 4' } }).addTo(map)
+    rasterLayers.current.set(scene.id, thumbnailLayer)
+    footprintLayers.current.set(scene.id, footprint)
+    setVisible(ids => [...ids, scene.id])
+    setLoadingIds(ids => [...ids, scene.id])
+    map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
+    try {
+      const rendered = await renderVantorCog(scene.visual, scene.bbox)
+      if (!rasterLayers.current.has(scene.id)) return
+      map.removeLayer(rasterLayers.current.get(scene.id))
+      rasterLayers.current.set(scene.id, L.imageOverlay(rendered.url, rendered.bounds, { opacity: .84, interactive: false }).addTo(map))
+    } catch {
+      // Keep the STAC thumbnail visible if a browser cannot make COG range requests.
+    } finally {
+      setLoadingIds(ids => ids.filter(id => id !== scene.id))
+    }
+  }
+
+  return <section className="vantor-section section" id="vantor"><div className="section-top"><div><SectionLabel number="02C">HIGH-RESOLUTION EVENT IMAGERY</SectionLabel><h2>VANTOR<br /><em>IMAGERY</em></h2></div><div className="section-intro"><p>Public Vantor/Maxar STAC scenes, including post-event WorldView-3 coverage. Toggle one or more acquisition dates to compare their footprints and imagery.</p><span className="verified-chip"><i /> COGS · ON-DEMAND · VANTOR OPEN DATA</span></div></div><div className="vantor-map-shell"><div ref={mapNode} className="vantor-map" /><div className="vantor-map-key"><span className={loadingIds.length ? 'loader' : 'loaded'} /> {loadingIds.length ? `READING ${loadingIds.length} COG OVERVIEW${loadingIds.length > 1 ? 'S' : ''}` : status}<small>OpenStreetMap basemap · dashed outlines show STAC footprints</small></div></div><div className="vantor-controls" role="group" aria-label="Vantor scene overlays"><div className="vantor-controls-head"><span>ACQUISITION TIMELINE</span><small>Toggle multiple layers for comparison</small></div>{scenes.map(scene => <label className={`vantor-scene ${visible.includes(scene.id) ? 'active' : ''}`} key={scene.id}><input type="checkbox" checked={visible.includes(scene.id)} onChange={() => toggleScene(scene)} /><span className="vantor-check" /><span className="vantor-date">{scene.date}<small>{scene.time}</small></span><span className="vantor-scene-meta">{scene.platform || 'Vantor'} · {scene.gsd ? `${scene.gsd} m` : 'GSD n/a'}<small>{scene.cloud ?? 'n/a'}% cloud · COG</small></span><a href={scene.itemUrl} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} aria-label={`Open STAC item ${scene.id}`}><ExternalLink size={14} /></a>{loadingIds.includes(scene.id) && <span className="vantor-loading">LOADING</span>}</label>)}</div><p className="vantor-note">Direct browser-side COG overview reads use geotiff.js and HTTP range requests; thumbnails appear during loading. The source COGs are approximately 287 MB–1.6 GB, so this view intentionally avoids full-resolution downloads. A COG tile service is recommended for high-zoom analysis.</p></section>
+}
+
 function ImpactNotice() {
   return <section className="impact-data-section section" id="impact"><div className="impact-head"><div><SectionLabel number="05">CASUALTY &amp; RESPONSE REPORT</SectionLabel><h2>IMPACT<br /><em>DETAILS</em></h2></div><div className="awaiting notice-source"><span className="awaiting-dot" /> SOURCE: RASUWA FLOOD BULLETIN</div></div><div className="notice-time">Situation as of 11 Bhadra 2083 · 27 August 2026 · figures are dated and may change</div><div className="impact-grid"><div className="impact-item"><span>DEATHS RECORDED</span><strong>270</strong><small>District total reported by Nepal Police</small></div><div className="impact-item"><span>OFFICIALLY MISSING</span><strong>245</strong><small>NDRRMA SitRep-3</small></div><div className="impact-item"><span>INJURED</span><strong>75</strong><small>Rasuwa 43 · Nuwakot 29 · Dhading 3</small></div><div className="impact-item"><span>AIR RESCUES</span><strong>123</strong><small>Army update · Timure 95 · Haku tunnel 7</small></div><div className="impact-item"><span>GROUND RESCUES</span><strong>93</strong><small>Rasuwa 43 · Nuwakot 47 · Dhading 3</small></div><div className="impact-item"><span>TOURISTS UNACCOUNTED FOR</span><strong>484</strong><small>Foreign 391 · Nepali 93 · not a death count</small></div></div><div className="notice-summary"><div><span>DEATHS BY DISTRICT</span><strong>Chitwan 64 · Gorkha 19 · Dhading 18</strong><small>Nuwakot 11 · Tanahun 9 · Rasuwa 1 · Nawalparasi East 1</small></div><div><span>SECURITY PERSONNEL MISSING</span><strong>83</strong><small>Army 44 · Nepal Police 26 · APF 13</small></div><div><span>INFRASTRUCTURE DAMAGE</span><strong>80 bridges · 40 km paved road</strong><small>35 motorable · 45 suspension bridges · 7 power facilities / 276 MW</small></div></div><p className="impact-note">Credit and primary reference: <a href={casualtySourceUrl} target="_blank" rel="noreferrer">Rasuwa–Bhotekoshi Flood Bulletin by Niraj Bhusal</a>. The bulletin cites NDRRMA SitRep-3, Nepal Police, the Nepal Army, district administrations, NEA, and other sources. Its public missing-person reports are separate from the official 245 figure and must not be added to it.</p></section>
 }
@@ -247,7 +362,7 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false)
   const [openTimeline, setOpenTimeline] = useState(1)
   return <div className="app">
-    <nav className="nav"><a className="brand" href="#overview"><span className="brand-mark"><Satellite size={16} /></span><span>FIELDNOTE<br /><i>NEPAL / 01</i></span></a><div className={`nav-links ${mobileNav ? 'is-open' : ''}`}><a href="#overview" onClick={() => setMobileNav(false)}>OVERVIEW</a><a href="#map" onClick={() => setMobileNav(false)}>MAP</a><a href="#satellite" onClick={() => setMobileNav(false)}>SATELLITE</a><a href="#sentinel" onClick={() => setMobileNav(false)}>SENTINEL-2</a><a href="#timeline" onClick={() => setMobileNav(false)}>TIMELINE</a><a href="#impact" onClick={() => setMobileNav(false)}>IMPACT</a><a href="#data" onClick={() => setMobileNav(false)}>DATA</a></div><div className="nav-right"><span className="event-badge"><i /> EVENT: 26 AUG 2026</span><button className="menu-btn" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation" aria-expanded={mobileNav} aria-controls="primary-navigation">{mobileNav ? <X size={19} /> : <Menu size={19} />}</button></div></nav>
+    <nav className="nav"><a className="brand" href="#overview"><span className="brand-mark"><Satellite size={16} /></span><span>FIELDNOTE<br /><i>NEPAL / 01</i></span></a><div className={`nav-links ${mobileNav ? 'is-open' : ''}`}><a href="#overview" onClick={() => setMobileNav(false)}>OVERVIEW</a><a href="#map" onClick={() => setMobileNav(false)}>MAP</a><a href="#satellite" onClick={() => setMobileNav(false)}>SATELLITE</a><a href="#sentinel" onClick={() => setMobileNav(false)}>SENTINEL-2</a><a href="#vantor" onClick={() => setMobileNav(false)}>VANTOR</a><a href="#timeline" onClick={() => setMobileNav(false)}>TIMELINE</a><a href="#impact" onClick={() => setMobileNav(false)}>IMPACT</a><a href="#data" onClick={() => setMobileNav(false)}>DATA</a></div><div className="nav-right"><span className="event-badge"><i /> EVENT: 26 AUG 2026</span><button className="menu-btn" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation" aria-expanded={mobileNav} aria-controls="primary-navigation">{mobileNav ? <X size={19} /> : <Menu size={19} />}</button></div></nav>
 
     <main>
       <section className="hero" id="overview"><div className="hero-map"><MapGraphic satellite={satellite} /></div><div className="hero-content"><div className="eyebrow"><span className="live-dot" /> SATELLITE OBSERVATION / NEPAL</div><h1>BHOTE KOSHI–<br /><em>TRISHULI</em><br />FLOOD</h1><div className="hero-bottom"><p className="hero-sub">Satellite-based visualisation and verified information about the <strong>26 August 2026</strong> disaster event.</p><div className="hero-actions"><a className="button button-primary" href="#map">EXPLORE SATELLITE IMAGERY <ArrowDownRight size={16} /></a><a className="button button-ghost" href="#timeline">VIEW EVENT TIMELINE <ArrowDownRight size={16} /></a></div></div></div><div className="hero-meta"><div><span>EVENT</span><strong>Outburst / flash flood</strong></div><div><span>LOCATION</span><strong>Bhote Koshi–Trishuli corridor, Nepal</strong></div><div><span>DATE</span><strong>26 August 2026</strong></div><div><span>SATELLITE DATA</span><strong>PlanetScope</strong></div><div><span>RESOLUTION</span><strong>~3.8 m</strong></div></div><div className="scroll-cue"><span>SCROLL TO INVESTIGATE</span><ArrowDownRight size={16} /></div></section>
@@ -258,6 +373,7 @@ function App() {
 
       <SceneBrowser />
       <SentinelBrowser />
+      <VantorImagery />
       <ImpactNotice />
 
       <section className="cloud-section section"><div className="cloud-copy"><SectionLabel number="03">SCENE QUALITY</SectionLabel><h2>WHAT CAN THE<br /><em>SATELLITE SEE?</em></h2><p>Cloud cover limits what is visible from orbit. The post-event collection is valuable context, but it does not provide complete ground coverage.</p><div className="cloud-range"><strong>62–93%</strong><span>POST-EVENT CLOUD COVER RANGE</span></div></div><div className="cloud-viz"><div className="cloud-viz-label"><span>CLEAR GROUND</span><span>CLOUD-COVERED AREA</span></div><div className="cloud-bar"><div className="clear-segment" /><div className="cloud-segment" /></div><div className="cloud-percent"><strong>≈ 2–14%</strong><span>clear ground visibility<br />per post-event scene</span></div><div className="clear-scenes"><span>RELATIVELY CLEARER SCENES</span><div><code>20260826_050125_99_255f</code><b>14% clear</b></div><div><code>20260826_050135_34_255f</code><b>11% clear</b></div></div></div></section>

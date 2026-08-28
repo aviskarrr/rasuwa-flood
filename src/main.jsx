@@ -9,16 +9,19 @@ import './imagery.css'
 import 'leaflet/dist/leaflet.css'
 
 const datasetUrl = 'https://source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26'
-const preEventImage = 'https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/pre-event/2026-05-27/items/20260527_053226_41_254a/20260527_053226_41_254a_thumbnail.png'
-const postEventImage = 'https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/post-event/2026-08-26/items/20260826_054456_67_251f/20260826_054456_67_251f_thumbnail.png'
-const preCollectionUrl = `${datasetUrl}/pre-event/2026-05-27/collection.json`.replace('https://source.coop', 'https://data.source.coop')
-const postCollectionUrl = `${datasetUrl}/post-event/2026-08-26/collection.json`.replace('https://source.coop', 'https://data.source.coop')
+const dataDatasetUrl = datasetUrl.replace('https://source.coop', 'https://data.source.coop')
+const preCollectionRoot = `${dataDatasetUrl}/pre-event/planetscope-2026-05-27`
+const postCollectionRoot = `${dataDatasetUrl}/post-event/planetscope-2026-08-26`
+const preEventImage = `${preCollectionRoot}/items/20260527_053226_41_254a/20260527_053226_41_254a_thumbnail.png`
+const postEventImage = `${postCollectionRoot}/items/20260826_054456_67_251f/20260826_054456_67_251f_thumbnail.png`
+const preCollectionUrl = `${preCollectionRoot}/collection.json`
+const postCollectionUrl = `${postCollectionRoot}/collection.json`
 const sentinelSearchUrl = 'https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=85.25,28.15,85.55,28.55&datetime=2026-08-01T00:00:00Z/2026-08-31T23:59:59Z&limit=31&sortby=-properties.datetime'
 const casualtySourceUrl = 'https://nirajbhusal.github.io/rasuwa-flood-bulletin/'
 const fallbackScenes = [
   { id: '20260527_053226_41_254a', phase: 'PRE-EVENT', date: '27 MAY 2026', time: '05:32:26 UTC', nepaliTime: '11:17:26 NPT', platform: '254a', cloud: 5, thumbnail: preEventImage },
   { id: '20260826_054456_67_251f', phase: 'POST-EVENT', date: '26 AUG 2026', time: '05:44:56 UTC', nepaliTime: '11:29:56 NPT', platform: '251f', cloud: 72, thumbnail: postEventImage },
-  { id: '20260826_050135_34_255f', phase: 'POST-EVENT', date: '26 AUG 2026', time: '05:01:35 UTC', nepaliTime: '10:46:35 NPT', platform: '255f', cloud: 89, thumbnail: 'https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/post-event/2026-08-26/items/20260826_050135_34_255f/20260826_050135_34_255f_thumbnail.png' }
+  { id: '20260826_050135_34_255f', phase: 'POST-EVENT', date: '26 AUG 2026', time: '05:01:35 UTC', nepaliTime: '10:46:35 NPT', platform: '255f', cloud: 89, thumbnail: `${postCollectionRoot}/items/20260826_050135_34_255f/20260826_050135_34_255f_thumbnail.png` }
 ]
 
 function formatNepalTime(datetime) {

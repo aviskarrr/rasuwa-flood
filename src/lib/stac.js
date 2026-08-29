@@ -6,7 +6,10 @@ export const preEventImage = `${preCollectionRoot}/items/20260527_053226_41_254a
 export const postEventImage = `${postCollectionRoot}/items/20260826_054456_67_251f/20260826_054456_67_251f_thumbnail.png`
 export const preCollectionUrl = `${preCollectionRoot}/collection.json`
 export const postCollectionUrl = `${postCollectionRoot}/collection.json`
-export const sentinelSearchUrl = 'https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=85.25,28.15,85.55,28.55&datetime=2026-08-01T00:00:00Z/2026-08-31T23:59:59Z&limit=31&sortby=-properties.datetime'
+
+// Fixed AOI for Timure / Rasuwa border corridor [minLon, minLat, maxLon, maxLat]
+export const AOI_BBOX = [85.25, 28.15, 85.55, 28.55]
+export const sentinelSearchUrl = `https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=${AOI_BBOX.join(',')}&datetime=2026-08-01T00:00:00Z/2026-08-31T23:59:59Z&limit=31&sortby=-properties.datetime`
 export const casualtySourceUrl = 'https://nirajbhusal.github.io/rasuwa-flood-bulletin/'
 export const vantorCollectionUrl = 'https://vantor-opendata.s3.amazonaws.com/events/Nepal-Flooding-Aug-2026/collection.json'
 
@@ -46,11 +49,12 @@ export const fallbackPlanetScenes = [
   }
 ]
 
+// Fallback points strictly inside the Timure / Rasuwa AOI bounds ([28.15, 85.25] to [28.55, 85.55])
 export const fallbackSentinelScenes = [
-  { id: 'S2A_MSIL2A_20260827T044651_N0511_R033_T45RVM', date: '27 AUG 2026', time: '04:46:51 UTC', cloud: 48, thumbnail: '', visual: '', source: '', center: [28.08, 85.32] },
-  { id: 'S2A_MSIL2A_20260822T044651_N0511_R033_T45RVM', date: '22 AUG 2026', time: '04:46:51 UTC', cloud: 36, thumbnail: '', visual: '', source: '', center: [28.08, 85.32] },
-  { id: 'S2A_MSIL2A_20260817T044651_N0511_R033_T45RVM', date: '17 AUG 2026', time: '04:46:51 UTC', cloud: 62, thumbnail: '', visual: '', source: '', center: [28.08, 85.32] },
-  { id: 'S2A_MSIL2A_20260812T044651_N0511_R033_T45RVM', date: '12 AUG 2026', time: '04:46:51 UTC', cloud: 19, thumbnail: '', visual: '', source: '', center: [28.08, 85.32] }
+  { id: 'S2A_MSIL2A_20260827T044651_N0511_R033_T45RVM', date: '27 AUG 2026', time: '04:46:51 UTC', cloud: 48, thumbnail: '', visual: '', source: '', center: [28.38, 85.38] },
+  { id: 'S2A_MSIL2A_20260822T044651_N0511_R033_T45RVM', date: '22 AUG 2026', time: '04:46:51 UTC', cloud: 36, thumbnail: '', visual: '', source: '', center: [28.34, 85.36] },
+  { id: 'S2A_MSIL2A_20260817T044651_N0511_R033_T45RVM', date: '17 AUG 2026', time: '04:46:51 UTC', cloud: 62, thumbnail: '', visual: '', source: '', center: [28.28, 85.42] },
+  { id: 'S2A_MSIL2A_20260812T044651_N0511_R033_T45RVM', date: '12 AUG 2026', time: '04:46:51 UTC', cloud: 19, thumbnail: '', visual: '', source: '', center: [28.42, 85.34] }
 ]
 
 export const fallbackVantorScenes = [
@@ -100,18 +104,42 @@ export function formatVantorDate(datetime) {
   }
 }
 
+export function clampToAoi(bbox) {
+  const minLon = Math.max(bbox[0], AOI_BBOX[0])
+  const minLat = Math.max(bbox[1], AOI_BBOX[1])
+  const maxLon = Math.min(bbox[2], AOI_BBOX[2])
+  const maxLat = Math.min(bbox[3], AOI_BBOX[3])
+
+  // If no overlap, fall back to AOI center
+  if (minLon > maxLon || minLat > maxLat) {
+    return [(AOI_BBOX[1] + AOI_BBOX[3]) / 2, (AOI_BBOX[0] + AOI_BBOX[2]) / 2]
+  }
+  return [(minLat + maxLat) / 2, (minLon + maxLon) / 2]
+}
+
+export function intersectsAoi(bbox) {
+  if (!bbox || bbox.length < 4) return true
+  return !(bbox[0] > AOI_BBOX[2] || bbox[2] < AOI_BBOX[0] || bbox[1] > AOI_BBOX[3] || bbox[3] < AOI_BBOX[1])
+}
+
 export function sceneCenter(scene, index = 0) {
-  if (scene.center && Array.isArray(scene.center)) return scene.center
+  if (scene.center && Array.isArray(scene.center)) {
+    const lat = scene.center[0]
+    const lon = scene.center[1]
+    if (lon >= AOI_BBOX[0] && lon <= AOI_BBOX[2] && lat >= AOI_BBOX[1] && lat <= AOI_BBOX[3]) {
+      return scene.center
+    }
+  }
   if (scene.bbox && Array.isArray(scene.bbox) && scene.bbox.length === 4) {
-    return [(scene.bbox[1] + scene.bbox[3]) / 2, (scene.bbox[0] + scene.bbox[2]) / 2]
+    return clampToAoi(scene.bbox)
   }
   const coordinates = scene.geometry?.coordinates?.[0]
   if (Array.isArray(coordinates) && coordinates.length > 0) {
-    const latSum = coordinates.reduce((sum, point) => sum + point[1], 0)
-    const lngSum = coordinates.reduce((sum, point) => sum + point[0], 0)
-    return [latSum / coordinates.length, lngSum / coordinates.length]
+    const lons = coordinates.map(p => p[0])
+    const lats = coordinates.map(p => p[1])
+    return clampToAoi([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)])
   }
-  return [28.08 - (index * 0.07), 85.32 - (index * 0.04)]
+  return [(AOI_BBOX[1] + AOI_BBOX[3]) / 2 - (index * 0.01), (AOI_BBOX[0] + AOI_BBOX[2]) / 2 - (index * 0.01)]
 }
 
 export function computeCloudStats(scenes = []) {

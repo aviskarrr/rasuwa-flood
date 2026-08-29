@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AOI_BBOX,
+  clampToAoi,
   computeCloudStats,
   fallbackPlanetScenes,
   fallbackSentinelScenes,
   fallbackVantorScenes,
   formatNepalTime,
   formatVantorDate,
+  intersectsAoi,
   sceneCenter
 } from '../src/lib/stac'
 
 describe('STAC Helpers & Date Formatting', () => {
   it('formats Nepal time correctly with NPT suffix', () => {
-    // 2026-08-26T05:44:56Z is UTC 05:44:56 -> NPT (+5:45) is 11:29:56 NPT
     const result = formatNepalTime('2026-08-26T05:44:56Z')
     expect(result).toContain('11:29:56 NPT')
   })
@@ -20,38 +22,61 @@ describe('STAC Helpers & Date Formatting', () => {
     const result = formatVantorDate('2026-08-28T05:12:00Z')
     expect(result).toBe('28 AUG 2026')
   })
+})
 
-  it('calculates scene center from explicit center coordinate', () => {
-    const scene = { center: [28.15, 85.35] }
-    expect(sceneCenter(scene, 0)).toEqual([28.15, 85.35])
+describe('Sentinel-2 AOI Clamping & Centroid Locking', () => {
+  it('clamps large 110x110 km MGRS tile footprints strictly inside AOI_BBOX', () => {
+    // A Sentinel-2 tile extending north into Tibet [84.9, 28.0, 86.0, 29.1]
+    const largeTibetTile = { bbox: [84.9, 28.0, 86.0, 29.1] }
+    const center = sceneCenter(largeTibetTile, 0)
+    // AOI is [85.25, 28.15, 85.55, 28.55]
+    // Clamped bbox is [85.25, 28.15, 85.55, 28.55]
+    // Centroid must be [28.35, 85.40]
+    expect(center[0]).toBeGreaterThanOrEqual(AOI_BBOX[1])
+    expect(center[0]).toBeLessThanOrEqual(AOI_BBOX[3])
+    expect(center[1]).toBeGreaterThanOrEqual(AOI_BBOX[0])
+    expect(center[1]).toBeLessThanOrEqual(AOI_BBOX[2])
+    expect(center[0]).toBeCloseTo(28.35)
+    expect(center[1]).toBeCloseTo(85.40)
   })
 
-  it('calculates scene center from bounding box [minX, minY, maxX, maxY]', () => {
-    const scene = { bbox: [85.20, 28.10, 85.40, 28.30] }
-    // center should be [(28.10 + 28.30) / 2, (85.20 + 85.40) / 2] = [28.20, 85.30]
-    const center = sceneCenter(scene, 0)
-    expect(center[0]).toBeCloseTo(28.20)
-    expect(center[1]).toBeCloseTo(85.30)
+  it('correctly detects intersecting and non-intersecting bboxes', () => {
+    const overlapping = [85.20, 28.10, 85.30, 28.20] // overlaps bottom-left
+    const nonOverlapping = [86.00, 29.00, 86.50, 29.50] // far northeast in Tibet
+    expect(intersectsAoi(overlapping)).toBe(true)
+    expect(intersectsAoi(nonOverlapping)).toBe(false)
   })
 
-  it('calculates scene center from Polygon geometry coordinates', () => {
-    const scene = {
+  it('clamps geometry polygon centroids inside AOI', () => {
+    const polygonScene = {
       geometry: {
         type: 'Polygon',
         coordinates: [
           [
-            [85.2, 28.1],
-            [85.4, 28.1],
-            [85.4, 28.3],
-            [85.2, 28.3],
-            [85.2, 28.1]
+            [84.0, 27.5],
+            [86.5, 27.5],
+            [86.5, 29.5],
+            [84.0, 29.5],
+            [84.0, 27.5]
           ]
         ]
       }
     }
-    const center = sceneCenter(scene, 0)
-    expect(center[0]).toBeCloseTo(28.18, 1)
-    expect(center[1]).toBeCloseTo(85.28, 1)
+    const center = sceneCenter(polygonScene, 0)
+    expect(center[0]).toBeGreaterThanOrEqual(AOI_BBOX[1])
+    expect(center[0]).toBeLessThanOrEqual(AOI_BBOX[3])
+    expect(center[1]).toBeGreaterThanOrEqual(AOI_BBOX[0])
+    expect(center[1]).toBeLessThanOrEqual(AOI_BBOX[2])
+  })
+
+  it('ensures all fallback Sentinel scenes sit inside AOI', () => {
+    fallbackSentinelScenes.forEach(scene => {
+      const center = sceneCenter(scene, 0)
+      expect(center[0]).toBeGreaterThanOrEqual(AOI_BBOX[1])
+      expect(center[0]).toBeLessThanOrEqual(AOI_BBOX[3])
+      expect(center[1]).toBeGreaterThanOrEqual(AOI_BBOX[0])
+      expect(center[1]).toBeLessThanOrEqual(AOI_BBOX[2])
+    })
   })
 })
 

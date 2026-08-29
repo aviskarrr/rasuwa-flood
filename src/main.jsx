@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Satellite } from 'lucide-react'
 import { DataProvider } from './context/DataContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { LazyMount } from './components/LazyMount'
 import { Nav } from './components/Nav'
 import { Hero } from './components/Hero'
 import { MapSection } from './components/MapSection'
@@ -18,7 +19,7 @@ import './styles.css'
 import './imagery.css'
 import 'leaflet/dist/leaflet.css'
 
-// Code-split Leaflet & GeoTIFF map components behind Suspense (Priority 3)
+// Code-split Leaflet & GeoTIFF map components behind Suspense
 const VantorImagery = lazy(() => import('./components/VantorImagery'))
 const SentinelBrowser = lazy(() => import('./components/SentinelBrowser'))
 
@@ -40,39 +41,58 @@ export function App() {
         <Nav />
 
         <main>
+          {/* Above-the-fold priority render */}
           <Hero satellite={satellite} />
-
           <MapSection satellite={satellite} setSatellite={setSatellite} />
 
-          <ErrorBoundary sectionName="Vantor High-Resolution Imagery">
-            <Suspense fallback={<MapSectionFallback title="VANTOR HIGH-RES" />}>
-              <VantorImagery />
-            </Suspense>
-          </ErrorBoundary>
+          {/* Viewport-gated below-the-fold sections */}
+          <LazyMount minHeight="500px">
+            <ErrorBoundary sectionName="Vantor High-Resolution Imagery">
+              <Suspense fallback={<MapSectionFallback title="VANTOR HIGH-RES" />}>
+                <VantorImagery />
+              </Suspense>
+            </ErrorBoundary>
+          </LazyMount>
 
-          <SatelliteOverview />
+          <LazyMount minHeight="400px">
+            <SatelliteOverview />
+          </LazyMount>
 
-          <ErrorBoundary sectionName="PlanetScope Scene Browser">
-            <SceneBrowser />
-          </ErrorBoundary>
+          <LazyMount minHeight="450px">
+            <ErrorBoundary sectionName="PlanetScope Scene Browser">
+              <SceneBrowser />
+            </ErrorBoundary>
+          </LazyMount>
 
-          <ErrorBoundary sectionName="Sentinel-2 Border Archive">
-            <Suspense fallback={<MapSectionFallback title="SENTINEL-2" />}>
-              <SentinelBrowser />
-            </Suspense>
-          </ErrorBoundary>
+          <LazyMount minHeight="500px">
+            <ErrorBoundary sectionName="Sentinel-2 Border Archive">
+              <Suspense fallback={<MapSectionFallback title="SENTINEL-2" />}>
+                <SentinelBrowser />
+              </Suspense>
+            </ErrorBoundary>
+          </LazyMount>
 
-          <ErrorBoundary sectionName="Casualty & Response Report">
-            <ImpactNotice />
-          </ErrorBoundary>
+          <LazyMount minHeight="350px">
+            <ErrorBoundary sectionName="Casualty & Response Report">
+              <ImpactNotice />
+            </ErrorBoundary>
+          </LazyMount>
 
-          <DataQuality />
+          <LazyMount minHeight="300px">
+            <DataQuality />
+          </LazyMount>
 
-          <UnderstandingData />
+          <LazyMount minHeight="350px">
+            <UnderstandingData />
+          </LazyMount>
 
-          <Timeline />
+          <LazyMount minHeight="400px">
+            <Timeline />
+          </LazyMount>
 
-          <DataMethods />
+          <LazyMount minHeight="350px">
+            <DataMethods />
+          </LazyMount>
         </main>
 
         <Footer />

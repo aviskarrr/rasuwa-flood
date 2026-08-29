@@ -6,5 +6,16 @@ export default defineConfig({
   plugins: [react()],
   worker: {
     format: 'es'
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-leaflet': ['leaflet'],
+          'vendor-icons': ['lucide-react']
+        }
+      }
+    }
   }
 })

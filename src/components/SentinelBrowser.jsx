@@ -15,6 +15,7 @@ export function SentinelBrowser() {
     sentinelLoading,
     sentinelError,
     sentinelIsFallback,
+    loadSentinelScenes,
     retrySentinel
   } = useData()
 
@@ -25,7 +26,12 @@ export function SentinelBrowser() {
   const mapInstance = useRef(null)
   const markerLayer = useRef(null)
 
-  // Initialize Leaflet map
+  // Lazy load STAC data on mount
+  useEffect(() => {
+    loadSentinelScenes()
+  }, [])
+
+  // Initialize Leaflet map with clean lifecycle management
   useEffect(() => {
     if (!mapNode.current || mapInstance.current) return
     const map = L.map(mapNode.current, {
@@ -157,7 +163,7 @@ export function SentinelBrowser() {
         </div>
       </div>
 
-      {/* Accessible data table for screen reader users (Priority 4) */}
+      {/* Accessible data table for screen reader users */}
       <table className="sr-only">
         <caption>Sentinel-2 satellite observation scenes for August 2026</caption>
         <thead>
@@ -216,9 +222,9 @@ export function SentinelBrowser() {
       <div className="sentinel-browser">
         <div className="sentinel-preview">
           {rasterUrl ? (
-            <img src={rasterUrl} alt={`Sentinel-2 true color scene ${scene.id}`} />
+            <img src={rasterUrl} alt={`Sentinel-2 true color scene ${scene.id}`} loading="lazy" />
           ) : scene.thumbnail ? (
-            <img src={scene.thumbnail} alt={`Sentinel-2 scene ${scene.id}`} />
+            <img src={scene.thumbnail} alt={`Sentinel-2 scene ${scene.id}`} loading="lazy" />
           ) : (
             <div className="sentinel-empty">
               <Satellite size={30} className={rasterLoading ? 'spin' : ''} />

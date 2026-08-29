@@ -12,6 +12,7 @@ export function VantorImagery() {
     vantorLoading,
     vantorError,
     vantorIsFallback,
+    loadVantorScenes,
     retryVantor
   } = useData()
 
@@ -22,7 +23,12 @@ export function VantorImagery() {
   const rasterLayers = useRef(new Map())
   const footprintLayers = useRef(new Map())
 
-  // Initialize Leaflet map
+  // Lazy load STAC data on mount
+  useEffect(() => {
+    loadVantorScenes()
+  }, [])
+
+  // Initialize Leaflet map with clean lifecycle management
   useEffect(() => {
     if (!mapNode.current || mapInstance.current) return undefined
     const map = L.map(mapNode.current, { zoomControl: false, minZoom: 8 }).setView([28.23, 85.30], 10)
@@ -37,6 +43,8 @@ export function VantorImagery() {
     return () => {
       map.remove()
       mapInstance.current = null
+      rasterLayers.current.clear()
+      footprintLayers.current.clear()
     }
   }, [])
 
@@ -79,7 +87,6 @@ export function VantorImagery() {
     map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
 
     try {
-      // Worker-powered GeoTIFF decode
       const rendered = await renderVantorCog(scene.visual, scene.bbox)
       if (rasterLayers.current.has(scene.id) || visible.includes(scene.id)) {
         if (thumbnailLayer) map.removeLayer(thumbnailLayer)
@@ -117,7 +124,7 @@ export function VantorImagery() {
         </div>
       </div>
 
-      {/* Accessible data table for screen reader users (Priority 4) */}
+      {/* Accessible data table for screen reader users */}
       <table className="sr-only">
         <caption>Vantor/Maxar high-resolution satellite imagery collection</caption>
         <thead>

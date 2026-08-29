@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { SectionLabel } from './SectionLabel'
@@ -12,8 +12,14 @@ export function SceneBrowser() {
     planetLoading,
     planetError,
     planetIsFallback,
+    loadPlanetScenes,
     retryPlanet
   } = useData()
+
+  // Lazy load STAC data on mount
+  useEffect(() => {
+    loadPlanetScenes()
+  }, [])
 
   const scene = planetScenes[planetSelected] || planetScenes[0]
 
@@ -56,6 +62,7 @@ export function SceneBrowser() {
             <img
               src={scene.thumbnail}
               alt={`${scene.phase} PlanetScope scene ${scene.id} acquired on ${scene.date}`}
+              loading="lazy"
             />
             <div className="scene-viewer-overlay">
               <span>{scene.phase}</span>

@@ -1,8 +1,27 @@
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Production builds
+# Production builds & bundler output
 dist/
+dist-ssr/
+*.local
+
+# Vite / Bundler cache
+.vite/
+
+# Test coverage & test artifacts
+coverage/
+.vitest/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Linter & formatter cache
+.eslintcache
+.stylelintcache
 
 # Local environment files
 .env
@@ -20,6 +39,11 @@ pnpm-debug.log*
 .vscode/
 .idea/
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 Thumbs.db
 
 # Temporary files

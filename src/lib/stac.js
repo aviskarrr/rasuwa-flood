@@ -10,7 +10,7 @@ export const postCollectionUrl = `${postCollectionRoot}/collection.json`
 // Fixed AOI for Timure / Rasuwa border corridor [minLon, minLat, maxLon, maxLat]
 export const AOI_BBOX = [85.25, 28.15, 85.55, 28.55]
 export const sentinelSearchUrl = `https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=${AOI_BBOX.join(',')}&datetime=2026-08-01T00:00:00Z/2026-08-31T23:59:59Z&limit=31&sortby=-properties.datetime`
-export const casualtySourceUrl = 'https://nirajbhusal.github.io/rasuwa-flood-bulletin/'
+export const casualtySourceUrl = 'https://nirajbhusal.github.io/rasuwa-flood-bulletin/#home'
 export const vantorCollectionUrl = 'https://vantor-opendata.s3.amazonaws.com/events/Nepal-Flooding-Aug-2026/collection.json'
 
 export const fallbackPlanetScenes = [

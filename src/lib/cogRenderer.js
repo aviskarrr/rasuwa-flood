@@ -1,4 +1,5 @@
 import { fromUrl } from 'geotiff'
+import { calculateAoiWindow } from './geoProj'
 
 let workerInstance = null
 let workerRequestId = 0
@@ -10,7 +11,9 @@ function getWorker() {
   }
   if (!workerInstance) {
     try {
-      workerInstance = new Worker(new URL('../workers/cogWorker.js', import.meta.url), { type: 'module' })
+      workerInstance = new Worker(new URL('../workers/cogWorker.js', import.meta.url), {
+        type: 'module'
+      })
       workerInstance.onmessage = (event) => {
         const { id, success, url, raw, width, height, rgba, bounds, error } = event.data
         const resolver = pendingRequests.get(id)
@@ -32,7 +35,7 @@ function getWorker() {
             const imgData = ctx.createImageData(width, height)
             imgData.data.set(rgba)
             ctx.putImageData(imgData, 0, 0)
-            resolver.resolve({ url: canvas.toDataURL('image/jpeg', 0.9), bounds })
+            resolver.resolve({ url: canvas.toDataURL('image/jpeg', 0.92), bounds })
           } catch (canvasErr) {
             resolver.reject(canvasErr)
           }
@@ -52,13 +55,41 @@ function getWorker() {
   return workerInstance
 }
 
-async function renderSentinelCogMainThread(url, bbox) {
+async function renderSentinelCogMainThread(url, bbox, targetWidth = 2048) {
   const tiff = await fromUrl(url)
   const image = await tiff.getImage()
-  const scale = Math.min(1, 1400 / image.getWidth())
-  const width = Math.max(1, Math.round(image.getWidth() * scale))
-  const height = Math.max(1, Math.round(image.getHeight() * scale))
-  const rasters = await image.readRasters({ samples: [0, 1, 2], width, height, interleave: false })
+  const aoiBbox = bbox || [85.25, 28.15, 85.55, 28.55]
+  const winResult = calculateAoiWindow(image, aoiBbox, targetWidth)
+
+  let width
+  let height
+  let rasters
+  let bounds
+
+  if (winResult.isValid) {
+    width = winResult.width
+    height = winResult.height
+    bounds = winResult.bounds
+    rasters = await image.readRasters({
+      samples: [0, 1, 2],
+      window: winResult.window,
+      width,
+      height,
+      interleave: false,
+      resampleMethod: 'bilinear'
+    })
+  } else {
+    const nativeWidth = image.getWidth()
+    const scale = Math.min(1, 1400 / nativeWidth)
+    width = Math.max(1, Math.round(nativeWidth * scale))
+    height = Math.max(1, Math.round(image.getHeight() * scale))
+    bounds = [
+      [bbox[1], bbox[0]],
+      [bbox[3], bbox[2]]
+    ]
+    rasters = await image.readRasters({ samples: [0, 1, 2], width, height, interleave: false })
+  }
+
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -71,23 +102,60 @@ async function renderSentinelCogMainThread(url, bbox) {
     pixels.data[index * 4 + 3] = 255
   }
   context.putImageData(pixels, 0, 0)
-  return { url: canvas.toDataURL('image/jpeg', 0.9), bounds: [[bbox[1], bbox[0]], [bbox[3], bbox[2]]] }
+  return { url: canvas.toDataURL('image/jpeg', 0.92), bounds }
 }
 
-async function renderVantorCogMainThread(url, bbox) {
+async function renderVantorCogMainThread(url, bbox, targetWidth = 2048) {
   const tiff = await fromUrl(url)
   const imageCount = await tiff.getImageCount()
-  let image = await tiff.getImage(imageCount - 1)
-  for (let index = 1; index < imageCount; index += 1) {
+  const aoiBbox = bbox || [85.25, 28.15, 85.55, 28.55]
+
+  let selectedImage = null
+  let selectedWinResult = null
+
+  for (let index = imageCount - 1; index >= 0; index -= 1) {
     const candidate = await tiff.getImage(index)
-    if (candidate.getWidth() <= 3072) {
-      image = candidate
+    const win = calculateAoiWindow(candidate, aoiBbox, targetWidth)
+    if (win.isValid && (win.windowWidth >= targetWidth || index === 0)) {
+      selectedImage = candidate
+      selectedWinResult = win
       break
     }
   }
-  const width = image.getWidth()
-  const height = image.getHeight()
-  const rgb = await image.readRGB({ width, height, interleave: true })
+
+  let width
+  let height
+  let rgb
+  let bounds
+
+  if (selectedImage && selectedWinResult?.isValid) {
+    width = selectedWinResult.width
+    height = selectedWinResult.height
+    bounds = selectedWinResult.bounds
+    rgb = await selectedImage.readRGB({
+      window: selectedWinResult.window,
+      width,
+      height,
+      interleave: true
+    })
+  } else {
+    selectedImage = await tiff.getImage(imageCount - 1)
+    for (let index = 1; index < imageCount; index += 1) {
+      const candidate = await tiff.getImage(index)
+      if (candidate.getWidth() <= 3072) {
+        selectedImage = candidate
+        break
+      }
+    }
+    width = selectedImage.getWidth()
+    height = selectedImage.getHeight()
+    bounds = [
+      [bbox[1], bbox[0]],
+      [bbox[3], bbox[2]]
+    ]
+    rgb = await selectedImage.readRGB({ width, height, interleave: true })
+  }
+
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -100,45 +168,45 @@ async function renderVantorCogMainThread(url, bbox) {
     pixels.data[index * 4 + 3] = 255
   }
   context.putImageData(pixels, 0, 0)
-  return { url: canvas.toDataURL('image/jpeg', 0.88), bounds: [[bbox[1], bbox[0]], [bbox[3], bbox[2]]] }
+  return { url: canvas.toDataURL('image/jpeg', 0.9), bounds }
 }
 
-export function renderSentinelCog(url, bbox) {
+export function renderSentinelCog(url, bbox, targetWidth = 2048) {
   const worker = getWorker()
   if (!worker) {
-    return renderSentinelCogMainThread(url, bbox)
+    return renderSentinelCogMainThread(url, bbox, targetWidth)
   }
 
   const id = ++workerRequestId
   return new Promise((resolve, reject) => {
     pendingRequests.set(id, { resolve, reject })
-    worker.postMessage({ id, type: 'sentinel', url, bbox })
+    worker.postMessage({ id, type: 'sentinel', url, bbox, targetWidth })
     // Timeout safeguard: 15s
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         console.warn('Worker COG request timed out, falling back to main thread')
-        renderSentinelCogMainThread(url, bbox).then(resolve).catch(reject)
+        renderSentinelCogMainThread(url, bbox, targetWidth).then(resolve).catch(reject)
       }
     }, 15000)
   })
 }
 
-export function renderVantorCog(url, bbox) {
+export function renderVantorCog(url, bbox, targetWidth = 2048) {
   const worker = getWorker()
   if (!worker) {
-    return renderVantorCogMainThread(url, bbox)
+    return renderVantorCogMainThread(url, bbox, targetWidth)
   }
 
   const id = ++workerRequestId
   return new Promise((resolve, reject) => {
     pendingRequests.set(id, { resolve, reject })
-    worker.postMessage({ id, type: 'vantor', url, bbox })
+    worker.postMessage({ id, type: 'vantor', url, bbox, targetWidth })
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         console.warn('Worker Vantor COG request timed out, falling back to main thread')
-        renderVantorCogMainThread(url, bbox).then(resolve).catch(reject)
+        renderVantorCogMainThread(url, bbox, targetWidth).then(resolve).catch(reject)
       }
     }, 20000)
   })

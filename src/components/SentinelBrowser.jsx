@@ -3,7 +3,7 @@ import L from 'leaflet'
 import { ExternalLink, RefreshCw, Satellite } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { renderSentinelCog } from '../lib/cogRenderer'
-import { sceneCenter } from '../lib/stac'
+import { AOI_BBOX, sceneCenter } from '../lib/stac'
 import { SectionLabel } from './SectionLabel'
 
 export function SentinelBrowser() {
@@ -91,7 +91,7 @@ export function SentinelBrowser() {
     })
   }, [sentinelScenes, sentinelSelected, setSentinelSelected])
 
-  // Decode Sentinel COG via Web Worker
+  // Decode Sentinel COG via Web Worker with AOI-clamped targetBbox and high resolution
   useEffect(() => {
     const activeScene = sentinelScenes[sentinelSelected]
     const visual = activeScene?.visual
@@ -105,7 +105,15 @@ export function SentinelBrowser() {
     let cancelled = false
     setRasterLoading(true)
 
-    renderSentinelCog(visual, activeScene.bbox)
+    // Clamp bbox strictly to Timure/Rasuwa AOI corridor
+    const targetBbox = [
+      Math.max(activeScene.bbox[0], AOI_BBOX[0]),
+      Math.max(activeScene.bbox[1], AOI_BBOX[1]),
+      Math.min(activeScene.bbox[2], AOI_BBOX[2]),
+      Math.min(activeScene.bbox[3], AOI_BBOX[3])
+    ]
+
+    renderSentinelCog(visual, targetBbox, 2048)
       .then(result => {
         if (!cancelled) {
           setRasterUrl(result.url)

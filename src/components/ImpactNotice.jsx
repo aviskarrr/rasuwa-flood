@@ -1,5 +1,5 @@
 import React from 'react'
-import { CheckCircle2, ExternalLink } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { casualtySourceUrl } from '../lib/stac'
 import { SectionLabel } from './SectionLabel'
@@ -21,14 +21,22 @@ export function ImpactNotice() {
 
         <div className="awaiting notice-source">
           <span className="awaiting-dot" aria-hidden="true" />
-          <span>SOURCE: RASUWA FLOOD BULLETIN</span>
+          <a
+            href={casualtySourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="notice-source-link"
+            aria-label="Open Rasuwa Flood Bulletin source in new tab"
+          >
+            SOURCE: RASUWA FLOOD BULLETIN <ExternalLink size={12} aria-hidden="true" />
+          </a>
         </div>
       </div>
 
       <div className="notice-time-bar">
         <div className="notice-time-text">
-          <strong>Situation as of 11 Bhadra 2083 · 27 August 2026</strong>
-          <span>Figures fixed as of 27 August 2026 — not auto-updated</span>
+          <strong>30 August 2026, 09:00 NPT — NDRRMA / Ministry of Home Affairs</strong>
+          <span>Fixed snapshot (14 Bhadau 2083, 09:00 NPT) · Multi-agency records vary; re-verify before time-sensitive use</span>
         </div>
         <div className="verification-badge">
           <CheckCircle2 size={13} aria-hidden="true" />
@@ -39,61 +47,74 @@ export function ImpactNotice() {
       <div className="impact-grid">
         <div className="impact-item">
           <span>DEATHS RECORDED</span>
-          <strong>270</strong>
-          <small>District total reported by Nepal Police</small>
+          <strong>734</strong>
+          <small>NDRRMA / Ministry of Home Affairs (14 Bhadau 09:00)</small>
         </div>
         <div className="impact-item">
-          <span>OFFICIALLY MISSING</span>
-          <strong>245</strong>
-          <small>NDRRMA SitRep-3 official record</small>
+          <span>UNREACHABLE / MISSING</span>
+          <strong>2,498</strong>
+          <small>Official recorded unreachable / missing count</small>
         </div>
         <div className="impact-item">
           <span>INJURED</span>
-          <strong>75</strong>
-          <small>Rasuwa 43 · Nuwakot 29 · Dhading 3</small>
+          <strong>242</strong>
+          <small>NDRRMA verified injured tally</small>
         </div>
         <div className="impact-item">
-          <span>AIR RESCUES</span>
-          <strong>123</strong>
-          <small>Army update · Timure 95 · Haku tunnel 7</small>
+          <span>RESCUED BY HELICOPTER</span>
+          <strong>1,976</strong>
+          <small>Aerial rescue missions conducted</small>
         </div>
         <div className="impact-item">
-          <span>GROUND RESCUES</span>
-          <strong>93</strong>
-          <small>Rasuwa 43 · Nuwakot 47 · Dhading 3</small>
+          <span>TOTAL RESCUED (NDRRMA)</span>
+          <strong>8,186</strong>
+          <small>Combined air and ground operations</small>
         </div>
         <div className="impact-item">
-          <span>TOURISTS UNACCOUNTED FOR</span>
-          <strong>484</strong>
-          <small>Foreign 391 · Nepali 93 · not a death count</small>
+          <span>PERSONNEL DEPLOYED</span>
+          <strong>19,895</strong>
+          <small>Security forces & emergency responders</small>
         </div>
       </div>
 
       <div className="notice-summary">
         <div>
-          <span>DEATHS BY DISTRICT</span>
-          <strong>Chitwan 64 · Gorkha 19 · Dhading 18</strong>
-          <small>Nuwakot 11 · Tanahun 9 · Rasuwa 1 · Nawalparasi East 1</small>
+          <span>DEATHS BY DISTRICT (NDRRMA / HOME MINISTRY · 09:00, 14 BHADAU)</span>
+          <strong>Chitwan 259 · Nawalparasi East 184 · Nawalparasi West 82 · Gorkha 58</strong>
+          <small>Nuwakot 52 · Dhading 50 · Tanahu 36 · Rasuwa 13</small>
         </div>
         <div>
-          <span>SECURITY PERSONNEL MISSING</span>
-          <strong>83</strong>
-          <small>Army 44 · Nepal Police 26 · APF 13</small>
-        </div>
-        <div>
-          <span>INFRASTRUCTURE DAMAGE</span>
+          <span>INFRASTRUCTURE DAMAGE ASSESSMENT</span>
           <strong>80 bridges · 40 km paved road</strong>
-          <small>35 motorable · 45 suspension bridges · 7 power facilities / 276 MW</small>
+          <small>35 motorable · 45 suspension · 7 power plants (276 MW) · Unlisted stats require separate bulletin check</small>
         </div>
       </div>
 
-      <p className="impact-note">
-        Credit and primary reference:{' '}
-        <a href={casualtySourceUrl} target="_blank" rel="noreferrer">
-          Rasuwa–Bhotekoshi Flood Bulletin by Niraj Bhusal <ExternalLink size={11} aria-hidden="true" />
-        </a>
-        . The bulletin cites NDRRMA SitRep-3, Nepal Police, the Nepal Army, district administrations, NEA, and other official sources. Its public missing-person reports are separate from the official 245 figure and must not be added to it.
-      </p>
+      <div className="impact-snapshot-notice" role="note" aria-label="Snapshot advisory notice">
+        <div className="snapshot-notice-header">
+          <AlertTriangle size={15} className="snapshot-icon" aria-hidden="true" />
+          <strong>ADMINISTRATIVE SNAPSHOT ADVISORY · NOT A LIVE FEED</strong>
+        </div>
+        <p>
+          These casualty and rescue figures represent a verified point-in-time snapshot as of{' '}
+          <strong>30 August 2026, 09:00 NPT (14 Bhadau 2083)</strong> published by the National Disaster Risk Reduction and
+          Management Authority (NDRRMA) and the Ministry of Home Affairs. This bulletin updates multiple times daily, and figures reported across different agencies (NDRRMA, Nepal Police, Nepal Army, and district disaster management committees) do not always reconcile.
+        </p>
+        <p>
+          These numbers will go stale again and <strong>must be re-verified against the official bulletin</strong> before being trusted for any time-sensitive decision-making or reporting. Unlisted metrics (such as detailed structural damage) are retained from baseline reports and require a separate check against the bulletin&apos;s damage-assessment section.
+        </p>
+        <div className="snapshot-source-row">
+          <span>Primary reference:</span>
+          <a
+            href={casualtySourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="snapshot-source-link"
+          >
+            Rasuwa–Bhotekoshi Flood Bulletin (Niraj Bhusal) <ExternalLink size={12} aria-hidden="true" />
+          </a>
+        </div>
+      </div>
     </section>
   )
 }

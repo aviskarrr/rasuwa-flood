@@ -48,7 +48,7 @@ export function DataProvider({ children }) {
   const [bulletinStatus, setBulletinStatus] = useState({
     reachable: true,
     verified: true,
-    message: 'Figures fixed as of 27 August 2026 — not auto-updated',
+    message: 'Verified snapshot: 30 August 2026, 09:00 NPT — NDRRMA / Home Ministry',
     lastChecked: null
   })
 
